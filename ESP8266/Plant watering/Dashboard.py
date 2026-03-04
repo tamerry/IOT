@@ -13,8 +13,8 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 st.set_page_config(page_title="Sera OS Pro", page_icon="🌱", layout="wide", initial_sidebar_state="collapsed")
 
 # --- FIREBASE SABİTLERİ ---
-FIREBASE_URL = "https://bitki-sulama-default-rtdb.firebaseio.com"
-FIREBASE_AUTH = "qr2pcxY3h8VBGVKAJhoNY83DfsBouyviDmuCHw2h"
+FIREBASE_URL = "#"
+FIREBASE_AUTH = "#"
 
 # --- PREMIUM CSS TASARIMI ---
 st.markdown("""
