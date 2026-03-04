@@ -127,7 +127,8 @@ Sistem verileri her **4 saniyede bir** aşağıdaki formatta Firebase’e gönde
       }
     }
   }
-}```
+}
+```
 🤝 Katkıda Bulunma
 
 Hata bildirimleri ve Pull Request’ler memnuniyetle kabul edilir.
