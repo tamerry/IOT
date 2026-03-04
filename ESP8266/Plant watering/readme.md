@@ -1,31 +1,64 @@
-🌱 Akıllı Sera OS - Sistem Mimarisi ve DokümantasyonSürüm: v2.0 (Kararlı Sürüm)Bu belge, ESP8266 tabanlı bir IoT donanım düğümü ile Google Firebase bulut altyapısını ve Python tabanlı profesyonel bir web kontrol panelini birleştiren tam otonom akıllı sera sisteminin mimarisini açıklar.🌟 Sistemin Temel Özellikleri💧 Akıllı Sulama: Toprak nemi belirlenen eşik değerinin altına düştüğünde su pompasını otomatik çalıştırır.📍 Konum Takibi: APM GPS modülü ile sistemin bulunduğu konum, bağlı uydu sayısı ve hareket durumu izlenir.☁️ Bulut Kontrolü: Web paneli üzerinden sisteme uzaktan manuel "Su Ver" veya "Reset At" komutları gönderilir.🛜 Kolay Kurulum: Wi-Fi koptuğunda Sera_Kurulum ağı açılır ve koda dokunmadan Wi-Fi/Firebase şifreleri telefondan yenilenir.1. Sistem Akış ŞemasıVerinin sensörlerden çıkıp kullanıcının ekranına ulaşana kadar izlediği yol ve komutların kullanıcıdan seraya nasıl döndüğü aşağıdaki şemada belirtilmiştir:graph TD
-    subgraph DONANIM KATMANI (ESP8266 Edge Node)
-        A[DHT11 Sensörü] -->|Sıcaklık/Nem| ESP(NodeMCU ESP8266)
-        B[Toprak Nem Sensörü] -->|Analog Nem| ESP
-        C[DS1302 RTC Modülü] <-->|Sistem Saati| ESP
-        ESP -->|Aç/Kapat| D[5V Röle & Su Pompası]
-        ESP -->|Durum Gösterimi| E[16x2 I2C LCD Ekran]
-    end
+# 🌱 Akıllı Sera OS (Smart Greenhouse OS)
 
-    subgraph AĞ VE KURULUM KATMANI
-        ESP <..>|İlk Kurulum (Sera_Kurulum WPA2)| F(Akıllı Telefon ile WiFiManager)
-        ESP <-->|Kalıcı Bağlantı| G(Ev Wi-Fi Modemi)
-    end
+![Sürüm](https://img.shields.io/badge/Sürüm-v2.0-blue.svg)
+![Platform](https://img.shields.io/badge/Platform-ESP8266-success.svg)
+![Veritabanı](https://img.shields.io/badge/Veritabanı-Firebase-orange.svg)
 
-    subgraph BULUT KATMANI (Firebase Realtime DB)
-        G <-->|SSL / HTTPS Şifreli| H[(Firebase Veritabanı)]
-        H -->|Sensör Okumaları| I{.../Veriler}
-        H -->|Pompa/Reset Komutları| J{.../Komutlar}
-        H -->|Nem Sınırı Değeri| K{.../Ayarlar}
-    end
+**Akıllı Sera OS**, ESP8266 tabanlı bir mikrodenetleyici kullanarak sera veya saksı bitkilerinin otomatik sulanmasını, ortam değerlerinin ölçülmesini ve GPS üzerinden anlık konum takibini sağlayan **uçtan uca bir IoT (Nesnelerin İnterneti) projesidir.**
 
-    subgraph SUNUM KATMANI (Python Streamlit Dashboard)
-        L[Güvenli Login Ekranı] --> M[Ana Kontrol Paneli]
-        M <-->|HTTPS İstekleri| H
-        M --> N[Plotly Canlı Grafikler]
-        M --> O[Sistem Metrik Kartları]
-    end
-2. Donanım Bağlantı Şeması (Pinout)NodeMCU DevKit V1 (ESP8266) üzerindeki pinlerin çevresel sensörler ve modüllerle olan eşleşmesi:ESP8266 PiniModül / SensörModül Piniİşlev / NotVIN / 5VRöle & DS1302VCC5V besleme hattı.GNDTüm ModüllerGNDOrtak toprak hattı.3V3DHT11 & Toprak Sens.VCC3.3V besleme hattı.A0 (Analog)Toprak Nem SensörüA0Toprak kuruluğunu ölçer (0-1023).D0 (GPIO16)DS1302 RTCRST (CE)Boot hatasını önlemek için D8'den buraya alındı.D1 (GPIO5)16x2 I2C LCDSCLI2C Saat Sinyali.D2 (GPIO4)16x2 I2C LCDSDAI2C Veri Sinyali.D4 (GPIO2)DHT11 SensörüDATASıcaklık ve hava nemi veri hattı.D5 (GPIO14)5V Röle ModülüIN (Sinyal)Su pompasını tetikleyen pin (LOW Tetiklemeli).D6 (GPIO12)DS1302 RTCCLK (SCLK)Saat modülü saat sinyali.D7 (GPIO13)DS1302 RTCDAT (I/O)Saat modülü veri hattı.D3 (RX)APM Drone GPSTX(9600 Baud) NMEA konum verilerini okur.⚡ Güç Uyarısı: Modüllerin stabil çalışması ve ESP8266'nın resetlenmemesi için sistem PC USB'sinden değil, harici 5V 2A gücünde bir adaptör ile beslenmelidir.3. Çalışma Protokolleri ve GüvenlikA. İlk Kurulum (Provisioning)Cihaz ilk kez fişe takıldığında veya kayıtlı Wi-Fi bulunamadığında Sera_Kurulum AP'si yayar.Kullanıcı ağa SeraAdmin123 şifresi ile katılır (WPA2 korumalı).Captive Portal üzerinden Ev Wi-Fi şifresi, Firebase adresi ve Cihaz Auth Kodu girilir.Bilgiler ESP8266 EEPROM'a yazılır ve cihaz buluta bağlanır.B. Otomatik Sulama DöngüsüDöngü her 4 saniyede bir çalışır.Analog topraktan alınan veri (0-1023), yüzdeye (%0-100) dönüştürülür.Toprak nemi, Firebase'deki nemSiniri değerinin altındaysa röle tetiklenir ve o anki saat kaydedilir.Değer sınıra ulaştığında pompa durdurulur.C. Uzaktan Manuel TetiklemeKullanıcı Python Dashboard'dan "Su Ver" tuşuna basar.Python, Firebase'deki Komutlar/manuelPompa değerini true yapar.ESP8266 komutu görür, pompayı 5 sn çalıştırır.İşlem bittiğinde değeri tekrar false yaparak emri doğrular.D. Veri GüvenliğiKişisel Ağ: Wi-Fi şifresi kodda hardcoded (açık metin) tutulmaz.Bulut İletişimi: HTTP istekleri BearSSL ve TLS 1.2 protokolleri ile şifrelenir.Arayüz: Session-State tabanlı Login ve Cihaz ID doğrulaması kullanır.4. Firebase Veritabanı Yapısı (JSON)ESP8266'nın oluşturduğu ve Python'un okuyup yazdığı standart NoSQL veritabanı yapısı:{
+Sensör verileri Google Firebase Realtime Database'e senkronize edilir ve uzaktan kontrol edilebilir.
+
+## ✨ Öne Çıkan Özellikler
+
+* 💧 **Otonom Sulama:** Toprak nemi belirlenen eşik değerinin altına düştüğünde su pompasını otomatik olarak çalıştırır.
+* 📍 **Canlı GPS Takibi:** APM modülü entegrasyonu ile cihazın (veya taşınabilir seranın) bulunduğu konumu, uydu sayısını ve hareket hızını buluta aktarır.
+* ☁️ **Bulut ve Uzaktan Kontrol:** Kullanıcı, Firebase üzerinden (veya entegre Python Dashboard arayüzünden) sulama eşiğini değiştirebilir, manuel su verebilir veya cihaza uzaktan reset atabilir.
+* 🛜 **Akıllı WiFi Kurulumu (WiFiManager):** Cihazın kodunu değiştirmeye gerek kalmadan, akıllı telefon üzerinden `Sera_Kurulum` ağına bağlanılarak WiFi ve Firebase şifreleri kolayca yapılandırılabilir.
+* 💾 **Kalıcı Hafıza:** Ayarlar EEPROM'a kaydedilir, elektrik kesintilerinde bile cihaz ağı ve Firebase ayarlarını hatırlar.
+* ⌚ **RTC (Gerçek Zamanlı Saat):** İnternet bağlantısı olmasa bile DS1302 modülü ile son sulama zamanı gibi kritik veriler doğru şekilde takip edilir.
+
+## 🔌 Kullanılan Donanımlar ve Pin Bağlantıları
+
+Projenin beyni olarak **NodeMCU ESP8266 (DevKit V1)** kullanılmıştır.
+
+| Modül / Sensör | ESP8266 Pini | İşlev / Açıklama |
+| :--- | :--- | :--- |
+| **DHT11 Sensörü** | `D4` (GPIO2) | Ortam sıcaklığı ve hava nemini ölçer. |
+| **Toprak Nem Sensörü** | `A0` (Analog) | Toprağın iletkenliğini okur. |
+| **5V Röle (Su Pompası)** | `D5` (GPIO14) | Su motorunu çalıştıran sinyal pini (LOW tetiklemeli). |
+| **I2C 16x2 LCD** | `D1`(SCL), `D2`(SDA)| Cihaz üzeri anlık durum ekranı. |
+| **DS1302 RTC Saat** | `D7`(DAT), `D6`(CLK), `D0`(RST) | Saat modülü iletişim pinleri. |
+| **APM Drone GPS** | `D3` (RX) | (9600 Baud) NMEA konum verilerini okur. |
+
+> ⚠️ **Uyarı:** Donanımların kararlı çalışması için ESP8266 bilgisayar USB'si yerine **harici 5V (min 1A) bir güç kaynağı** ile beslenmelidir.
+
+## 🛠️ Kurulum Adımları
+
+### 1. Arduino IDE ve Kütüphaneler
+Arduino IDE'yi açın ve aşağıdaki kütüphanelerin sisteminizde kurulu olduğundan emin olun (Kütüphane Yöneticisinden indirebilirsiniz):
+* `Firebase ESP8266 Client` (Mobizt)
+* `TinyGPSPlus` (Mikal Hart)
+* `WiFiManager` (tzapu)
+* `Rtc by Makuna`
+* `DHT sensor library` (Adafruit)
+* `LiquidCrystal I2C`
+
+### 2. Kodu Yükleme
+`sera_node.ino` dosyasını Arduino IDE ile açın.
+**ÖNEMLİ:** Kodu karta yüklerken (Upload) `D8` pininin ve GPS'in takılı olduğu `D3` pininin **boş olduğundan** emin olun. Yükleme tamamlandıktan sonra kabloları geri takabilirsiniz.
+
+### 3. Cihazı Ağa Bağlama (Provisioning)
+1. Cihaza güç verin. Cihaz kayıtlı bir ağ bulamazsa LCD ekranda "Kurulum Bekleniyor" yazar.
+2. Telefonunuzun WiFi ayarlarına gidin ve **Sera_Kurulum** adlı ağa katılın (Şifre: `SeraAdmin123`).
+3. Açılan portaldan evinizin WiFi ağını seçin, şifresini girin.
+4. Firebase Linkinizi, Firebase Gizli Anahtarınızı ve Cihaz ID'nizi (Örn: `SERA-001`) yazıp **Kaydet** butonuna basın.
+
+## 🌲 Firebase JSON Yapısı
+
+Sistem, verilerini her 4 saniyede bir aşağıdaki NoSQL formatında Firebase'e aktarır:
+
+```json
+{
   "Cihazlar": {
     "SERA-001": {
       "Ayarlar": {
@@ -36,21 +69,23 @@
         "reset": false
       },
       "Veriler": {
-        "ip": "192.168.1.103",
+        "ip": "192.168.1.X",
         "isi": 24.5,
-        "kalite": 85,
-        "mac": "A4:CF:12:XX:XX:XX",
         "nem": 45,
-        "pompaAcik": false,
-        "rssi": -60,
-        "saat": "14:30:15",
-        "sonSulama": "12:15:00",
         "toprak": 25,
         "lat": 41.0082,
         "lng": 28.9784,
         "hiz": 0.0,
-        "uydular": 6
+        "uydular": 6,
+        "pompaAcik": false,
+        "saat": "14:30:15",
+        "sonSulama": "12:15:00"
       }
     }
   }
 }
+🤝 Katkıda Bulunma
+Hata bildirimleri ve çekme istekleri (Pull Requests) kabul edilmektedir. Büyük değişiklikler yapmadan önce lütfen tartışma için bir 'Issue' açın.
+
+📄 Lisans
+Bu proje MIT Lisansı altında lisanslanmıştır. Dilediğiniz gibi kullanabilir ve geliştirebilirsiniz.
