@@ -1,159 +1,242 @@
+#include <EEPROM.h>
+#include <ThreeWire.h>  
+#include <RtcDS1302.h>
 #include <ESP8266WiFi.h>
 #include <FirebaseESP8266.h>
-#include <ESP8266WebServer.h>
 #include <Wire.h>
 #include <LiquidCrystal_I2C.h>
 #include <DHT.h>
+#include <WiFiManager.h>
+#include <SoftwareSerial.h>
+#include <TinyGPSPlus.h> 
 
-// --- AYARLAR ---
-#define WIFI_SSID "wifi ssid"
-#define WIFI_PASSWORD " wifi pass"
-#define FIREBASE_HOST "firebase host"
-#define FIREBASE_AUTH "firebase secret key"
+// --- DONANIM PİN TANIMLARI ---
 
-#define DHTPIN D4
-#define SOIL_PIN A0
-#define RELAY_PIN D5
+// 1. RTC Saat Modülü Pinleri
+ThreeWire myWire(D7, D6, D0); // DAT(D7), CLK(D6), RST(D0)
+RtcDS1302<ThreeWire> Rtc(myWire);
+
+// 2. Sensör ve Röle Pinleri
+#define DHTPIN D4         
 #define DHTTYPE DHT11
+#define SOIL_PIN A0       
+#define RELAY_PIN D5      
 
+// 3. APM GPS Modülü Pinleri
+static const int RXPin = D3; // GPS TX kablosu (Veri Gönderen) buraya takılacak
+static const int TXPin = D8; // (Yükleme hatası vermemesi için boş bırakın)
+static const uint32_t GPSBaud = 9600; // Eski modüller için düzeltilmiş hız!
+
+// --- NESNELER ---
+TinyGPSPlus gps;
+SoftwareSerial ss(RXPin, TXPin);
 DHT dht(DHTPIN, DHTTYPE);
-LiquidCrystal_I2C lcd(0x27, 16, 2);
-ESP8266WebServer server(80);
+LiquidCrystal_I2C lcd(0x27, 16, 2); 
+
 FirebaseData fbdo;
 FirebaseAuth auth;
 FirebaseConfig config;
 
+// --- KALICI HAFIZA (EEPROM) ---
+char firebaseHost[100] = "";
+char firebaseAuth[60] = "";
+char cihazKodu[20] = "SERA-001";
+bool ayarlariKaydet = false;
+
+// --- SİSTEM DEĞİŞKENLERİ ---
 int nemSiniri = 30;
-unsigned long sonFirebaseZamani = 0;
-bool manuelCalisma = false;
+unsigned long sonDonguZamani = 0;
+bool oncekiPompa = false;
+String sonSulama = "Henuz Yok";
 
-// --- WEB ARAYÜZÜ (SADE VE HIZLI) ---
-void handleRoot() {
-  float h = dht.readHumidity();
-  float t = dht.readTemperature();
-  int toprak = map(analogRead(SOIL_PIN), 1023, 300, 0, 100);
-  
-  if (toprak > 100) toprak = 100;
-  if (toprak < 0) toprak = 0;
+String yol_komut_pompa, yol_komut_reset, yol_ayar_sinir, yol_veriler;
 
-  String html = "<!DOCTYPE html><html lang='tr'><head><meta charset='UTF-8'>";
-  html += "<meta name='viewport' content='width=device-width, initial-scale=1'>";
-  html += "<title>Sera Kontrol Paneli</title>";
-  html += "<style>";
-  html += "body{font-family:sans-serif; background:#f4f7f6; text-align:center; padding:20px;}";
-  html += ".container{max-width:500px; margin:auto; background:white; padding:30px; border-radius:15px; box-shadow:0 4px 15px rgba(0,0,0,0.1);}";
-  html += ".box{background:#f9f9f9; padding:20px; border-radius:10px; margin:10px 0; border-left:5px solid #28a745;}";
-  html += ".value{font-size:2em; font-weight:bold; color:#333;}";
-  html += ".label{color:#666; font-size:1.1em;}";
-  html += ".btn{display:block; width:100%; padding:15px; margin:10px 0; border:none; border-radius:8px; font-size:1.1em; cursor:pointer; font-weight:bold; transition:0.2s;}";
-  html += ".btn-water{background:#007bff; color:white;}";
-  html += ".btn-reset{background:#dc3545; color:white; margin-top:30px; font-size:0.9em; opacity:0.8;}";
-  html += ".btn:active{transform:scale(0.98); opacity:0.9;}";
-  html += "</style></head><body>";
-  html += "<div class='container'>";
-  html += "<h1>🌿 Akıllı Sera</h1>";
-  html += "<div class='box'><div class='label'>Sıcaklık</div><div class='value'>" + String(t) + " °C</div></div>";
-  html += "<div class='box'><div class='label'>Hava Nemi</div><div class='value'>%" + String((int)h) + "</div></div>";
-  html += "<div class='box'><div class='label'>Toprak Nemi</div><div class='value'>%" + String(toprak) + "</div></div>";
-  html += "<button class='btn btn-water' onclick=\"location.href='/pompaAc'\">🚿 MANUEL SULAMA (5sn)</button>";
-  html += "<button class='btn btn-reset' onclick=\"if(confirm('Sistem resetlensin mi?')) location.href='/reset'\">🔄 SİSTEMİ RESETLE</button>";
-  html += "<p style='color:#999;'>Veriler 5 saniyede bir güncellenir.</p>";
-  html += "</div>";
-  html += "<script>setTimeout(function () { location.reload(); }, 5000);</script>";
-  html += "</body></html>";
-
-  server.send(200, "text/html", html);
+// WiFiManager Tetikleyici
+void ayarKaydetCallback() {
+  ayarlariKaydet = true;
 }
 
-// --- RESET FONKSİYONU ---
-void handleReset() {
-  server.send(200, "text/plain", "Sistem yeniden baslatiliyor... Lutfen 10 saniye bekleyin.");
-  delay(1000);
-  ESP.restart();
-}
-
-// --- POMPA FONKSİYONU ---
-void handlePompa() {
-  manuelCalisma = true;
-  lcd.setCursor(0, 1);
-  lcd.print("MANUEL SULAMA...");
-  
-  digitalWrite(RELAY_PIN, LOW); // Röleyi aç (Aktif Low varsayımı ile)
-  delay(5000);
-  digitalWrite(RELAY_PIN, HIGH); // Röleyi kapat
-  
-  manuelCalisma = false;
-  server.sendHeader("Location", "/");
-  server.send(303);
+// Saat Fonksiyonu
+String getTimeString() {
+  RtcDateTime now = Rtc.GetDateTime();
+  char buf[10];
+  snprintf(buf, sizeof(buf), "%02u:%02u:%02u", now.Hour(), now.Minute(), now.Second());
+  return String(buf);
 }
 
 void setup() {
   Serial.begin(115200);
-  Wire.begin(D2, D1);
-  lcd.init();
+  
+  // 1. GPS BAŞLAT
+  ss.begin(GPSBaud);
+  Serial.println(F("\nGPS Modulu Bekleniyor..."));
+
+  // 2. ÇEVRE BİRİMLERİ
+  Wire.begin(D2, D1); 
+  lcd.init(); 
   lcd.backlight();
   dht.begin();
-  
-  pinMode(RELAY_PIN, OUTPUT);
-  digitalWrite(RELAY_PIN, HIGH); // Başlangıçta röle kapalı olsun
+  pinMode(RELAY_PIN, INPUT); // Röle varsayılan Kapalı (LOW)
 
-  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-  lcd.print("WiFi Baglaniyor");
-  while (WiFi.status() != WL_CONNECTED) { 
-    delay(500); 
-    lcd.print("."); 
+  // 3. RTC SAAT MODÜLÜ BAŞLAT
+  Rtc.Begin();
+  if (!Rtc.IsDateTimeValid()) { Rtc.SetDateTime(RtcDateTime(__DATE__, __TIME__)); }
+  if (Rtc.GetIsWriteProtected()) { Rtc.SetIsWriteProtected(false); }
+  if (!Rtc.GetIsRunning()) { Rtc.SetIsRunning(true); }
+
+  // 4. EEPROM'DAN AYARLARI OKU
+  EEPROM.begin(512);
+  if (EEPROM.read(0) == 'X') { 
+    EEPROM.get(1, firebaseHost);
+    EEPROM.get(105, firebaseAuth);
+    EEPROM.get(170, cihazKodu);
+  }
+  EEPROM.end();
+
+  // 5. WIFIMANAGER (KURULUM PORTALI)
+  lcd.clear(); 
+  lcd.print("Kurulum Bekleniyor");
+  lcd.setCursor(0,1); lcd.print("Aga Baglanin...");
+
+  WiFiManagerParameter custom_host("host", "Firebase Linki (https:// haric)", firebaseHost, 100);
+  WiFiManagerParameter custom_auth("auth", "Firebase Gizli Anahtari", firebaseAuth, 60);
+  WiFiManagerParameter custom_kodu("kodu", "Cihaz Auth Kodu (Orn: SERA-1)", cihazKodu, 20);
+
+  WiFiManager wifiManager;
+  wifiManager.setSaveConfigCallback(ayarKaydetCallback);
+  
+  wifiManager.addParameter(&custom_host);
+  wifiManager.addParameter(&custom_auth);
+  wifiManager.addParameter(&custom_kodu);
+
+  if (!wifiManager.autoConnect("Sera_Kurulum", "SeraAdmin123")) {
+    Serial.println("Baglanti hatasi!");
+    delay(3000); 
+    ESP.restart();
   }
 
-  config.database_url = FIREBASE_HOST;
-  config.signer.tokens.legacy_token = FIREBASE_AUTH;
+  // 6. YENİ AYAR GİRİLDİYSE KAYDET
+  if (ayarlariKaydet) {
+    strcpy(firebaseHost, custom_host.getValue());
+    strcpy(firebaseAuth, custom_auth.getValue());
+    strcpy(cihazKodu, custom_kodu.getValue());
+
+    EEPROM.begin(512);
+    EEPROM.write(0, 'X');
+    EEPROM.put(1, firebaseHost);
+    EEPROM.put(105, firebaseAuth);
+    EEPROM.put(170, cihazKodu);
+    EEPROM.commit();
+    EEPROM.end();
+  }
+
+  lcd.clear(); 
+  lcd.print("WiFi Baglandi!");
+  lcd.setCursor(0,1); lcd.print(WiFi.localIP());
+  delay(2000);
+
+  // 7. FIREBASE BAĞLANTISI
+  yol_komut_pompa = "/Cihazlar/" + String(cihazKodu) + "/Komutlar/manuelPompa";
+  yol_komut_reset = "/Cihazlar/" + String(cihazKodu) + "/Komutlar/reset";
+  yol_ayar_sinir = "/Cihazlar/" + String(cihazKodu) + "/Ayarlar/nemSiniri";
+  yol_veriler = "/Cihazlar/" + String(cihazKodu) + "/Veriler";
+
+  config.database_url = firebaseHost;
+  config.signer.tokens.legacy_token = firebaseAuth;
   Firebase.begin(&config, &auth);
 
   lcd.clear(); 
-  lcd.print("Baglandi!");
-  lcd.setCursor(0, 1); 
-  lcd.print(WiFi.localIP().toString());
+  lcd.print("Bulut Hazir!");
+  lcd.setCursor(0,1); lcd.print("Kod: "); lcd.print(cihazKodu);
   delay(3000); 
   lcd.clear();
-
-  server.on("/", handleRoot);
-  server.on("/pompaAc", handlePompa);
-  server.on("/reset", handleReset);
-  server.begin();
 }
 
 void loop() {
-  server.handleClient();
+  
+  // --- A. GPS VERİLERİNİ KESİNTİSİZ OKUMA ---
+  while (ss.available() > 0) {
+    gps.encode(ss.read());
+  }
 
-  if (!manuelCalisma && millis() - sonFirebaseZamani > 3000) {
-    sonFirebaseZamani = millis();
+  // --- B. ANA DÖNGÜ (Her 4 Saniyede Bir Çalışır) ---
+  if (millis() - sonDonguZamani > 4000) {
+    sonDonguZamani = millis();
+
+    // 1. BULUTTAN KOMUT DİNLE
+    if (Firebase.getBool(fbdo, yol_komut_pompa.c_str())) {
+      if (fbdo.boolData() == true) {
+        lcd.setCursor(0, 1); lcd.print("BULUT SULAMA!   ");
+        pinMode(RELAY_PIN, OUTPUT); digitalWrite(RELAY_PIN, LOW); delay(5000); pinMode(RELAY_PIN, INPUT);
+        sonSulama = getTimeString();
+        Firebase.setBool(fbdo, yol_komut_pompa.c_str(), false);
+      }
+    }
     
-    float t = dht.readTemperature();
+    if (Firebase.getBool(fbdo, yol_komut_reset.c_str())) {
+      if (fbdo.boolData() == true) {
+        Firebase.setBool(fbdo, yol_komut_reset.c_str(), false);
+        ESP.restart();
+      }
+    }
+
+    if (Firebase.getInt(fbdo, yol_ayar_sinir.c_str())) { nemSiniri = fbdo.intData(); }
+
+    // 2. SENSÖRLERİ OKUMA
+    float t = dht.readTemperature(); 
     float h = dht.readHumidity();
+    if(isnan(h)) h = 0; if(isnan(t)) t = 0;
+    
+    // Toprak sensörü genelde kuruyken 1023, ıslakken 300 verir. Tersi ise ilk iki rakamı (0, 1023) yapın.
     int toprak = map(analogRead(SOIL_PIN), 1023, 300, 0, 100);
-    
-    if (toprak > 100) toprak = 100; 
-    if (toprak < 0) toprak = 0; 
-    
-    // LCD Ekran Güncellemesi
-    lcd.setCursor(0, 0);
-    lcd.print("T:"); lcd.print((int)t); lcd.print("C H:%"); lcd.print((int)h); lcd.print("   ");
-    lcd.setCursor(0, 1);
-    lcd.print(" Toprak:%"); lcd.print(toprak); lcd.print("   ");
+    if(toprak > 100) toprak = 100; if(toprak < 0) toprak = 0;
 
-    // Firebase Güncellemesi
-    Firebase.setInt(fbdo, "/Sera/Sicaklik", (int)t); 
-    Firebase.setInt(fbdo, "/Sera/ToprakNemi", toprak);
-    Firebase.setInt(fbdo, "/Sera/HavaNemi", (int)h); 
-    
-    // Otomatik Sulama Kontrolü
-    if (toprak < nemSiniri) { 
-      digitalWrite(RELAY_PIN, LOW); // Röle AÇIK
-      lcd.setCursor(12, 1); 
-      lcd.print(" ON ");
-    } else {
-      digitalWrite(RELAY_PIN, HIGH); // Röle KAPALI
-      lcd.setCursor(12, 1); 
-      lcd.print(" OFF"); 
-    } 
-  } 
+    int dbm = WiFi.RSSI();
+    int wifiKalite = (dbm <= -100) ? 0 : ((dbm >= -50) ? 100 : 2 * (dbm + 100));
+
+    // Otomatik Sulama Kararı
+    bool anlikPompa = (toprak < nemSiniri);
+    if (anlikPompa && !oncekiPompa) sonSulama = getTimeString();
+    oncekiPompa = anlikPompa;
+
+    // 3. GPS VERİLERİNİ HAZIRLAMA
+    double enlem = 0.0;
+    double boylam = 0.0;
+    double gpsHiz = 0.0;
+    int uydular = 0;
+
+    if (gps.location.isValid()) {
+      enlem = gps.location.lat();
+      boylam = gps.location.lng();
+      gpsHiz = gps.speed.kmph();
+      uydular = gps.satellites.value();
+    }
+
+    // 4. LCD EKRANI GÜNCELLEME
+    lcd.setCursor(0, 0); 
+    lcd.print("T:"); lcd.print((int)t); lcd.print("C H:"); lcd.print((int)h); lcd.print("% ");
+    lcd.setCursor(0, 1); 
+    lcd.print("Toprak:%"); lcd.print(toprak); lcd.print("   ");
+    if (anlikPompa) { pinMode(RELAY_PIN, OUTPUT); digitalWrite(RELAY_PIN, LOW); lcd.setCursor(12,1); lcd.print(" ON "); } 
+    else { pinMode(RELAY_PIN, INPUT); lcd.setCursor(12,1); lcd.print(" OFF"); }
+
+    // 5. BULUTA VERİ YAZMA (Yeni FirebaseJson Yapısı İle Güvenli Gönderim)
+    FirebaseJson fbJson;
+    fbJson.set("isi", t);
+    fbJson.set("nem", (int)h);
+    fbJson.set("toprak", toprak);
+    fbJson.set("saat", getTimeString());
+    fbJson.set("sonSulama", sonSulama);
+    fbJson.set("pompaAcik", anlikPompa);
+    fbJson.set("ip", WiFi.localIP().toString());
+    fbJson.set("mac", WiFi.macAddress());
+    fbJson.set("rssi", dbm);
+    fbJson.set("kalite", wifiKalite);
+    fbJson.set("lat", enlem);
+    fbJson.set("lng", boylam);
+    fbJson.set("hiz", gpsHiz);
+    fbJson.set("uydular", uydular);
+
+    Firebase.setJSON(fbdo, yol_veriler.c_str(), fbJson);
+  }
 }
