@@ -1,61 +1,105 @@
 # 🌱 Akıllı Sera OS (Smart Greenhouse OS)
 
-![Sürüm](https://img.shields.io/badge/Sürüm-v2.0-blue.svg)
-![Platform](https://img.shields.io/badge/Platform-ESP8266-success.svg)
+![Sürüm](https://img.shields.io/badge/Sürüm-v2.0-blue.svg)  
+![Platform](https://img.shields.io/badge/Platform-ESP8266-success.svg)  
 ![Veritabanı](https://img.shields.io/badge/Veritabanı-Firebase-orange.svg)
 
-**Akıllı Sera OS**, ESP8266 tabanlı bir mikrodenetleyici kullanarak sera veya saksı bitkilerinin otomatik sulanmasını, ortam değerlerinin ölçülmesini ve GPS üzerinden anlık konum takibini sağlayan **uçtan uca bir IoT (Nesnelerin İnterneti) projesidir.**
+**Akıllı Sera OS**, ESP8266 tabanlı bir mikrodenetleyici ile sera veya saksı bitkilerinin otomatik sulanmasını, ortam verilerinin izlenmesini ve GPS üzerinden konum takibini sağlayan **uçtan uca bir IoT (Nesnelerin İnterneti) projesidir.**
 
-Sensör verileri Google Firebase Realtime Database'e senkronize edilir ve uzaktan kontrol edilebilir.
+Sensör verileri **Google Firebase Realtime Database**’e senkronize edilir ve sistem uzaktan kontrol edilebilir.
+
+---
 
 ## ✨ Öne Çıkan Özellikler
 
-* 💧 **Otonom Sulama:** Toprak nemi belirlenen eşik değerinin altına düştüğünde su pompasını otomatik olarak çalıştırır.
-* 📍 **Canlı GPS Takibi:** APM modülü entegrasyonu ile cihazın (veya taşınabilir seranın) bulunduğu konumu, uydu sayısını ve hareket hızını buluta aktarır.
-* ☁️ **Bulut ve Uzaktan Kontrol:** Kullanıcı, Firebase üzerinden (veya entegre Python Dashboard arayüzünden) sulama eşiğini değiştirebilir, manuel su verebilir veya cihaza uzaktan reset atabilir.
-* 🛜 **Akıllı WiFi Kurulumu (WiFiManager):** Cihazın kodunu değiştirmeye gerek kalmadan, akıllı telefon üzerinden `Sera_Kurulum` ağına bağlanılarak WiFi ve Firebase şifreleri kolayca yapılandırılabilir.
-* 💾 **Kalıcı Hafıza:** Ayarlar EEPROM'a kaydedilir, elektrik kesintilerinde bile cihaz ağı ve Firebase ayarlarını hatırlar.
-* ⌚ **RTC (Gerçek Zamanlı Saat):** İnternet bağlantısı olmasa bile DS1302 modülü ile son sulama zamanı gibi kritik veriler doğru şekilde takip edilir.
+- 💧 **Otonom Sulama:**  
+  Toprak nemi belirlenen eşik değerinin altına düştüğünde su pompası otomatik olarak çalışır.
+
+- 📍 **Canlı GPS Takibi:**  
+  APM modülü entegrasyonu ile cihazın (veya taşınabilir seranın) konumu, uydu sayısı ve hareket hızı buluta aktarılır.
+
+- ☁️ **Bulut Tabanlı Uzaktan Kontrol:**  
+  Firebase (veya entegre Python Dashboard) üzerinden:
+  - Sulama eşiği değiştirilebilir  
+  - Manuel sulama yapılabilir  
+  - Cihaza uzaktan reset atılabilir  
+
+- 🛜 **Akıllı WiFi Kurulumu (WiFiManager):**  
+  Kod değiştirmeden, telefon üzerinden `Sera_Kurulum` ağına bağlanarak WiFi ve Firebase bilgileri yapılandırılabilir.
+
+- 💾 **Kalıcı Hafıza (EEPROM):**  
+  Ayarlar EEPROM’a kaydedilir. Elektrik kesintilerinde WiFi ve Firebase bilgileri korunur.
+
+- ⌚ **RTC (Gerçek Zamanlı Saat):**  
+  İnternet bağlantısı olmasa bile DS1302 modülü sayesinde son sulama zamanı gibi kritik bilgiler doğru şekilde takip edilir.
+
+---
 
 ## 🔌 Kullanılan Donanımlar ve Pin Bağlantıları
 
-Projenin beyni olarak **NodeMCU ESP8266 (DevKit V1)** kullanılmıştır.
+Projenin ana kontrol birimi: **NodeMCU ESP8266 (DevKit V1)**
 
-| Modül / Sensör | ESP8266 Pini | İşlev / Açıklama |
-| :--- | :--- | :--- |
-| **DHT11 Sensörü** | `D4` (GPIO2) | Ortam sıcaklığı ve hava nemini ölçer. |
-| **Toprak Nem Sensörü** | `A0` (Analog) | Toprağın iletkenliğini okur. |
-| **5V Röle (Su Pompası)** | `D5` (GPIO14) | Su motorunu çalıştıran sinyal pini (LOW tetiklemeli). |
-| **I2C 16x2 LCD** | `D1`(SCL), `D2`(SDA)| Cihaz üzeri anlık durum ekranı. |
-| **DS1302 RTC Saat** | `D7`(DAT), `D6`(CLK), `D0`(RST) | Saat modülü iletişim pinleri. |
-| **APM Drone GPS** | `D3` (RX) | (9600 Baud) NMEA konum verilerini okur. |
+| Modül / Sensör        | ESP8266 Pini         | Açıklama |
+|-----------------------|----------------------|----------|
+| DHT11 Sensörü         | `D4` (GPIO2)         | Ortam sıcaklığı ve hava nemi ölçümü |
+| Toprak Nem Sensörü    | `A0` (Analog)        | Toprak nem değeri |
+| 5V Röle (Su Pompası)  | `D5` (GPIO14)        | Su pompası kontrol pini (LOW tetiklemeli) |
+| I2C 16x2 LCD          | `D1` (SCL), `D2` (SDA) | Anlık durum ekranı |
+| DS1302 RTC            | `D7` (DAT), `D6` (CLK), `D0` (RST) | Saat modülü bağlantıları |
+| APM Drone GPS         | `D3` (RX)            | 9600 baud NMEA veri okuma |
 
-> ⚠️ **Uyarı:** Donanımların kararlı çalışması için ESP8266 bilgisayar USB'si yerine **harici 5V (min 1A) bir güç kaynağı** ile beslenmelidir.
+> ⚠️ **Önemli:** Sistem kararlı çalışması için USB yerine **harici 5V (minimum 1A) güç kaynağı** ile beslenmelidir.
 
-## 🛠️ Kurulum Adımları
+---
 
-### 1. Arduino IDE ve Kütüphaneler
-Arduino IDE'yi açın ve aşağıdaki kütüphanelerin sisteminizde kurulu olduğundan emin olun (Kütüphane Yöneticisinden indirebilirsiniz):
-* `Firebase ESP8266 Client` (Mobizt)
-* `TinyGPSPlus` (Mikal Hart)
-* `WiFiManager` (tzapu)
-* `Rtc by Makuna`
-* `DHT sensor library` (Adafruit)
-* `LiquidCrystal I2C`
+## 🛠️ Kurulum
 
-### 2. Kodu Yükleme
-`sera_node.ino` dosyasını Arduino IDE ile açın.
-**ÖNEMLİ:** Kodu karta yüklerken (Upload) `D8` pininin ve GPS'in takılı olduğu `D3` pininin **boş olduğundan** emin olun. Yükleme tamamlandıktan sonra kabloları geri takabilirsiniz.
+### 1️⃣ Arduino IDE ve Kütüphaneler
 
-### 3. Cihazı Ağa Bağlama (Provisioning)
-1. Cihaza güç verin. Cihaz kayıtlı bir ağ bulamazsa LCD ekranda "Kurulum Bekleniyor" yazar.
-2. Telefonunuzun WiFi ayarlarına gidin ve **Sera_Kurulum** adlı ağa katılın (Şifre: `SeraAdmin123`).
-3. Açılan portaldan evinizin WiFi ağını seçin, şifresini girin.
-4. Firebase Linkinizi, Firebase Gizli Anahtarınızı ve Cihaz ID'nizi (Örn: `SERA-001`) yazıp **Kaydet** butonuna basın.
+Aşağıdaki kütüphanelerin kurulu olduğundan emin olun:
 
-## 🌲 Firebase JSON Yapısı
+- `Firebase ESP8266 Client` – Mobizt  
+- `TinyGPSPlus` – Mikal Hart  
+- `WiFiManager` – tzapu  
+- `Rtc by Makuna`  
+- `DHT sensor library` – Adafruit  
+- `LiquidCrystal I2C`  
 
-Sistem, verilerini her 4 saniyede bir aşağıdaki NoSQL formatında Firebase'e aktarır:
+---
+
+### 2️⃣ Kodu Yükleme
+
+1. `sera_node.ino` dosyasını Arduino IDE’de açın.
+2. Kart seçimi: **NodeMCU 1.0 (ESP-12E Module)**
+3. Yükleme sırasında:
+   - `D8` pini boş olmalı  
+   - GPS bağlı olan `D3` pini boş olmalı  
+
+Yükleme tamamlandıktan sonra kabloları tekrar bağlayabilirsiniz.
+
+---
+
+### 3️⃣ İlk Kurulum (Provisioning)
+
+1. Cihaza güç verin.  
+2. Kayıtlı ağ yoksa LCD ekranda **“Kurulum Bekleniyor”** yazar.
+3. Telefonunuzdan WiFi ayarlarına girin.
+4. **Sera_Kurulum** ağına bağlanın.  
+   - Şifre: `SeraAdmin123`
+5. Açılan yapılandırma ekranında:
+   - WiFi ağınızı seçin  
+   - WiFi şifrenizi girin  
+   - Firebase URL  
+   - Firebase Secret Key  
+   - Cihaz ID (örn: `SERA-001`)  
+
+Kaydet butonuna basın.
+
+---
+
+## 🌲 Firebase JSON Veri Yapısı
+
+Sistem verileri her **4 saniyede bir** aşağıdaki formatta Firebase’e gönderilir:
 
 ```json
 {
@@ -83,9 +127,14 @@ Sistem, verilerini her 4 saniyede bir aşağıdaki NoSQL formatında Firebase'e 
       }
     }
   }
-}
+}```
 🤝 Katkıda Bulunma
-Hata bildirimleri ve çekme istekleri (Pull Requests) kabul edilmektedir. Büyük değişiklikler yapmadan önce lütfen tartışma için bir 'Issue' açın.
+
+Hata bildirimleri ve Pull Request’ler memnuniyetle kabul edilir.
+
+Büyük değişiklikler öncesinde lütfen bir Issue açarak tartışma başlatın.
 
 📄 Lisans
-Bu proje MIT Lisansı altında lisanslanmıştır. Dilediğiniz gibi kullanabilir ve geliştirebilirsiniz.
+
+Bu proje MIT Lisansı altında lisanslanmıştır.
+Serbestçe kullanabilir, değiştirebilir ve geliştirebilirsiniz.
