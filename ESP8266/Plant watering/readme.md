@@ -129,13 +129,13 @@ Sistem verileri her **4 saniyede bir** aşağıdaki formatta Firebase’e gönde
   }
 }
 ```
-🤝 Katkıda Bulunma
+## 🤝 Katkıda Bulunma
 
 Hata bildirimleri ve Pull Request’ler memnuniyetle kabul edilir.
 
 Büyük değişiklikler öncesinde lütfen bir Issue açarak tartışma başlatın.
 
-📄 Lisans
+## 📄 Lisans
 
 Bu proje MIT Lisansı altında lisanslanmıştır.
 Serbestçe kullanabilir, değiştirebilir ve geliştirebilirsiniz.
